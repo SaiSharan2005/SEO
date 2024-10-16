@@ -35,7 +35,7 @@ def video_to_wav(input_video_path, output_audio_path):
 
 def wav_to_text(file_path):
     r = sr.Recognizer()
-    with sr.AudioFile(file_path) as source:
+    with sr.WavFile(file_path) as source:
         audio_text = r.record(source)
     
     try:
@@ -130,6 +130,49 @@ def generate_keywords_with_ranking(text):
 #     print(f"{keyword} | {freq} | {rank}%")
 
 
-def generate_keywords_with_keybert():
+def generate_keywords_with_keybert(text):
     keywords = kw_model.extract_keywords(text, keyphrase_ngram_range=(1, 2), stop_words='english', top_n=10)
     return keywords
+
+
+    import nltk
+from keybert import KeyBERT
+from nltk.corpus import stopwords
+import string
+
+# Download stopwords
+nltk.download('stopwords')
+
+# Initialize KeyBERT model
+kw_model = KeyBERT()
+
+stop_words = set(stopwords.words('english'))
+punctuation = set(string.punctuation)
+
+def extract_keywords_with_seeds(text, seed_keywords):
+    """
+    Extract keywords from the given text using KeyBERT and add seed keywords.
+    
+    Args:
+        text (str): The input text from which to extract keywords.
+        seed_keywords (list): A list of seed keywords to add to the final result.
+        
+    Returns:
+        list: A list of final keywords after combining extracted and seed keywords.
+    """
+    # Extract keywords using KeyBERT
+    keywords = kw_model.extract_keywords(text, top_n=90)
+
+    # Filter out stop words, punctuation, and short words (less than 3 characters)
+    filtered_keywords = [
+        keyword for keyword, _ in keywords 
+        if keyword.lower() not in stop_words and len(keyword) > 2 and keyword not in punctuation
+    ]
+
+    # Clean and filter the seed keywords
+    seed_keywords = [seed.strip().lower() for seed in seed_keywords if len(seed.strip()) > 2]
+
+    # Combine extracted keywords and seed keywords without duplicates
+    final_keywords = list(set(filtered_keywords + seed_keywords))
+
+    return final_keywords

@@ -27,7 +27,7 @@ const KeywordGeneration = () => {
     formData.append('file', videoFile);
 
     try {
-      const response = await fetch('http://localhost:8000/keyword-with-keybert/', {
+      const response = await fetch('http://127.0.0.1:8000/keyword-with-keybert/', {
         method: 'POST',
         body: formData,
       });
@@ -84,13 +84,15 @@ const KeywordGeneration = () => {
             <p className="mt-4 text-yellow-600">Please wait while we process your video...</p>
           )}
 
-          {/* Display generated keywords */}
+          {/* Display generated keywords with their scores */}
           {keywords && (
             <div className="mt-6 text-left">
               <h3 className="text-lg font-bold text-gray-800">Generated Keywords:</h3>
               <ul className="list-disc list-inside text-gray-600">
-                {keywords.map((keyword, index) => (
-                  <li key={index}>{keyword}</li>
+                {keywords.map((keywordData, index) => (
+                  <li key={index}>
+                    <span className="font-semibold">{keywordData[0]}</span> - Score: {keywordData[1].toFixed(4)}
+                  </li>
                 ))}
               </ul>
             </div>
