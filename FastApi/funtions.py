@@ -1,3 +1,4 @@
+from transformers import BartForConditionalGeneration, BartTokenizer
 from moviepy.editor import VideoFileClip
 import speech_recognition as sr
 import nltk
@@ -5,174 +6,126 @@ from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 from collections import Counter
 from keybert import KeyBERT
+import string
 
-# Download the required NLTK data files
+# NLTK and model initialization
 nltk.download('punkt')
+nltk.download('stopwords')
 
-# print(sr.__version__)
 r = sr.Recognizer()
-
 kw_model = KeyBERT()
+stop_words = set(stopwords.words('english'))
+punctuation = set(string.punctuation)
 
+# Load BART model and tokenizer
+bart_model = BartForConditionalGeneration.from_pretrained("facebook/bart-large-cnn")
+bart_tokenizer = BartTokenizer.from_pretrained("facebook/bart-large-cnn")
 
+# Functions
 def video_to_wav(input_video_path, output_audio_path):
     try:
-        # Load the video file
         video = VideoFileClip(input_video_path)
-        
-        # Extract audio from the video
         audio = video.audio
-        
-        # Write the audio to a WAV file
         audio.write_audiofile(output_audio_path, codec='pcm_s16le')
-        
         print(f"Audio successfully extracted and saved to {output_audio_path}")
     except Exception as e:
         print(f"An error occurred: {e}")
 
-# Example usage
-# video_to_wav('abc1.mp4', 'output_audio.wav')
-
 def wav_to_text(file_path):
-    r = sr.Recognizer()
     with sr.WavFile(file_path) as source:
         audio_text = r.record(source)
-    
     try:
-        response_text = r.recognize_google(audio_text)
+        return r.recognize_google(audio_text)
     except sr.RequestError as e:
-        # API was unreachable or unresponsive
         print(f"API request failed: {e}")
         return "API request failed"
     except sr.UnknownValueError:
-        # Speech was unintelligible
         print("Google Speech Recognition could not understand the audio")
         return "Speech not recognized"
+
+def summarize_text_with_bart(text, max_length=130, min_length=30):
+    inputs = bart_tokenizer.encode("summarize: " + text, return_tensors="pt", max_length=1024, truncation=True)
+    summary_ids = bart_model.generate(inputs, max_length=max_length, min_length=min_length, length_penalty=2.0, num_beams=4, early_stopping=True)
+    return bart_tokenizer.decode(summary_ids[0], skip_special_tokens=True)
+
+def generate_keywords_with_bart(text):
+    """
+    Integrates BART summarization with keyword generation.
+    1. Summarizes the text using BART.
+    2. Extracts keywords from the summary.
+    """
+    # Summarize the text
+    summarized_text = summarize_text_with_bart(text)
+    print("Summarized Text:", summarized_text)
     
-    return response_text
-
-
-
-
-def generate_keywords(text):
-    # Tokenize the input text
-    words = word_tokenize(text.lower())
-    
-    # Remove stopwords and non-alphabetic tokens
-    stop_words = set(stopwords.words('english'))
+    # Tokenize and extract keywords
+    words = word_tokenize(summarized_text.lower())
     keywords = [word for word in words if word.isalpha() and word not in stop_words]
-    
-    # Count the frequency of each keyword
     keyword_freq = Counter(keywords)
-    
-    # Sort keywords by frequency and return the most common ones
-    most_common_keywords = keyword_freq.most_common(12)  # Top 12 keywords
+    most_common_keywords = keyword_freq.most_common(12)
     return [keyword for keyword, _ in most_common_keywords]
 
-# Input text
-# text = """Hello guys welcome to Amit Thinks in this video we  will learn how to download and install the current MySQL version we will install MySQL Server  shell as well as Workbench let's start after installing you can also refer to a free 3 hours  MySQL tutorial the link is in the description of this video Let's start! Go to the web browser  I am using Chrome you can use any web browser on Google type MySQL and uh press enter open  the official website myql.com here it is Click downloads go below and click here MySQL Community
-# downloads now go to MySQL installer for Windows the following is the current version okay  8.0.37 and for Windows two versions are visible it's written 32-bit but  works for both 32-bit as well as 64-bit Windows 11 operating system I'll go  for the second one Okay click the download button now here click no thanks just start  my download started here it is let's wait 296 MB the download is successful click and  click open minimize now the installation will start now let us choose a setup type the  installation started I'll go for custom
-# click next now under select products click on  MySQL servers click it again and reach here click the arrow to drag now go to Applications  MySQL workbench and do the same drag and do the same for Shell drag it click next okay it will  also check the requirements and it will install the following as well you may or may not get  this requirement if you're already having this redistributable package it won't get installed  click execute we were not having it so it is installing click I agree install successful click close we  have installed it click next now
-# it will install MySQL click  execute one by one it will install we have installed it click next click  next again type in networking the port number is 3306 click next Authentication Method  Keep it at default that means strong and it is recommended click next now you need  to set the password root means the admin you are the admin of the MySQL on this  system on your system so add a password some people got stuck here and were unable  to set a strong password so you can use my password this is only on the local system not  on the server so we can use any password click
-# next you can also use your password as I told  before click next Windows service click next file permissions yes keep it as it is the default  click next the last step apply configuration click execute the configuration is  successful and the installation also click finish next it will also open  MySQL Workbench when I'll click finish no problem okay it is opening here it is workbench  let us set the path it was in C drive program files MySQL Server bin and that's it this is  the complete path copy minimize go to start
-# type type environment and click here that  is edit the system environment variables click open under system properties Advanced  click environment variables under system variables go to path double click click  new and right-click paste the same MySQL bin path Okay click okay okay and the  last okay now go to start type CMD open it now let us verify the installation  we have completed the installation mysql --version and we successfully  installed 8.0.37 now let us begin the server type the command mysql -u u means  user so our user was root and -p p means
-# password when I'll press enter it will ask  the same password so I'll mention the same password here it is successful now let us type some quick commands show databases  semicolon these are the default databases let us quickly create a new database  create databases database name let's say my database name is amitdb you can add any name press  enter and we created it because it's written query okay now type the same command show databases and  you can see amitdb database is visible that means we successfully created it let us know the path  of this database it will be under C drive Program
-# Data if you're not getting this because it would  be hidden on Windows 11 go to view show and click on this option hidden items I'll uncheck and it  will vanish you can see I'll just click hidden items and it's visible here go inside go to MySQL  server and here is your data folder click continue here is your amitdb same amitdb database you can  always take a backup from here so you should know this path okay guys so we have created a database  okay now we can open workbench also click here enter the same password select save password  and click okay we are inside MySQL workbench
-# workbench is like a UI for MySQL if you don't  want to type these commands you can directly go here you can also type commands here if you want a  free MySQL to tutorial as well as MySQL workbench tutorial refer the link in the description of  this video thank you for watching the video"""
-
-# # Generate and print keywords
-# keywords = generate_keywords(text)
-# print("Keywords:", keywords)
-
-
-def generate_keywords_with_ranking(text):
-    # Tokenize the input text
+def seo_rank_for_keywords(text, keywords):
+    """
+    Ranks keywords (both seed and generated) based on their frequency in the provided text.
+    
+    :param text: The input text to analyze.
+    :param keywords: A list of keywords to rank.
+    :return: A list of keywords ranked by their frequency in the text.
+    """
+    # Tokenize the input text and convert to lowercase
     words = word_tokenize(text.lower())
     
-    # Remove stopwords and non-alphabetic tokens
-    stop_words = set(stopwords.words('english'))
-    keywords = [word for word in words if word.isalpha() and word not in stop_words]
+    # Create a frequency count for the words in the text
+    word_freq = Counter(words)
     
-    # Count the frequency of each keyword
-    keyword_freq = Counter(keywords)
-    
-    # Calculate SEO ranking based on frequency
-    total_keywords = sum(keyword_freq.values())  # Total number of keywords in the text
-    
-    # Create a list of keywords with their frequency and SEO ranking score
+    # Rank the keywords based on their frequency in the text
     keyword_ranking = []
-    for keyword, freq in keyword_freq.items():
-        ranking_score = round((freq / total_keywords) * 100, 2)  # SEO score based on frequency
-        keyword_ranking.append((keyword, freq, ranking_score))
+    for keyword in keywords:
+        keyword_lower = keyword.lower()
+        frequency = word_freq.get(keyword_lower, 0)
+        keyword_ranking.append((keyword, frequency))
     
-    # Sort keywords by ranking score (highest score first)
-    keyword_ranking.sort(key=lambda x: x[2], reverse=True)
+    # Sort the keywords by their frequency (descending order)
+    keyword_ranking.sort(key=lambda x: x[1], reverse=True)
     
     return keyword_ranking
 
-# # Input text
-# text = """Hello guys welcome to Amit Thinks in this video we  will learn how to download and install the current MySQL version we will install MySQL Server  shell as well as Workbench let's start after installing you can also refer to a free 3 hours  MySQL tutorial the link is in the description of this video Let's start! Go to the web browser  I am using Chrome you can use any web browser on Google type MySQL and uh press enter open  the official website myql.com here it is Click downloads go below and click here MySQL Community
-# downloads now go to MySQL installer for Windows the following is the current version okay  8.0.37 and for Windows two versions are visible it's written 32-bit but  works for both 32-bit as well as 64-bit Windows 11 operating system I'll go  for the second one Okay click the download button now here click no thanks just start  my download started here it is let's wait 296 MB the download is successful click and  click open minimize now the installation will start now let us choose a setup type the  installation started I'll go for custom
-# click next now under select products click on  MySQL servers click it again and reach here click the arrow to drag now go to Applications  MySQL workbench and do the same drag and do the same for Shell drag it click next okay it will  also check the requirements and it will install the following as well you may or may not get  this requirement if you're already having this redistributable package it won't get installed  click execute we were not having it so it is installing click I agree install successful click close we  have installed it click next now
-# it will install MySQL click  execute one by one it will install we have installed it click next click  next again type in networking the port number is 3306 click next Authentication Method  Keep it at default that means strong and it is recommended click next now you need  to set the password root means the admin you are the admin of the MySQL on this  system on your system so add a password some people got stuck here and were unable  to set a strong password so you can use my password this is only on the local system not  on the server so we can use any password click
-# next you can also use your password as I told  before click next Windows service click next file permissions yes keep it as it is the default  click next the last step apply configuration click execute the configuration is  successful and the installation also click finish next it will also open  MySQL Workbench when I'll click finish no problem okay it is opening here it is workbench  let us set the path it was in C drive program files MySQL Server bin and that's it this is  the complete path copy minimize go to start
-# type type environment and click here that  is edit the system environment variables click open under system properties Advanced  click environment variables under system variables go to path double click click  new and right-click paste the same MySQL bin path Okay click okay okay and the  last okay now go to start type CMD open it now let us verify the installation  we have completed the installation mysql --version and we successfully  installed 8.0.37 now let us begin the server type the command mysql -u u means  user so our user was root and -p p means
-# password when I'll press enter it will ask  the same password so I'll mention the same password here it is successful now let us type some quick commands show databases  semicolon these are the default databases let us quickly create a new database  create databases database name let's say my database name is amitdb you can add any name press  enter and we created it because it's written query okay now type the same command show databases and  you can see amitdb database is visible that means we successfully created it let us know the path  of this database it will be under C drive Program
-# Data if you're not getting this because it would  be hidden on Windows 11 go to view show and click on this option hidden items I'll uncheck and it  will vanish you can see I'll just click hidden items and it's visible here go inside go to MySQL  server and here is your data folder click continue here is your amitdb same amitdb database you can  always take a backup from here so you should know this path okay guys so we have created a database  okay now we can open workbench also click here enter the same password select save password  and click okay we are inside MySQL workbench
-# workbench is like a UI for MySQL if you don't  want to type these commands you can directly go here you can also type commands here if you want a  free MySQL to tutorial as well as MySQL workbench tutorial refer the link in the description of  this video thank you for watching the video"""
-
-# # Generate keywords with SEO ranking
-# keywords_with_ranking = generate_keywords_with_ranking(text)
-
-# # Print keywords with their frequency and SEO ranking
-# print("Keyword | Frequency | SEO Ranking (%)")
-# for keyword, freq, rank in keywords_with_ranking:
-#     print(f"{keyword} | {freq} | {rank}%")
-
-
-def generate_keywords_with_keybert(text):
-    keywords = kw_model.extract_keywords(text, keyphrase_ngram_range=(1, 2), stop_words='english', top_n=10)
-    return keywords
-
-
-    import nltk
-from keybert import KeyBERT
-from nltk.corpus import stopwords
-import string
-
-# Download stopwords
-nltk.download('stopwords')
-
-# Initialize KeyBERT model
-kw_model = KeyBERT()
-
-stop_words = set(stopwords.words('english'))
-punctuation = set(string.punctuation)
-
-def extract_keywords_with_seeds(text, seed_keywords):
+def generate_keywords_with_bart_and_seeds(text, seed_keywords):
     """
-    Extract keywords from the given text using KeyBERT and add seed keywords.
+    Combines BART summarization-based keywords with seed keywords provided by the user,
+    Ranks all keywords (seed and BART-generated) based on their frequency in the transcribed text (SEO rank).
     
-    Args:
-        text (str): The input text from which to extract keywords.
-        seed_keywords (list): A list of seed keywords to add to the final result.
-        
-    Returns:
-        list: A list of final keywords after combining extracted and seed keywords.
+    :param text: The input text to process.
+    :param seed_keywords: A list of seed keywords to include in the final keyword list.
+    :return: A combined list of keywords and their SEO rankings.
     """
-    # Extract keywords using KeyBERT
-    keywords = kw_model.extract_keywords(text, top_n=90)
+    # Generate keywords from BART summarization
+    bart_keywords = generate_keywords_with_bart(text)
+    print("BART-Generated Keywords:", bart_keywords)
+    
+    # Combine seed and BART keywords
+    combined_keywords = bart_keywords + seed_keywords
+    
+    # Rank the combined keywords based on SEO (frequency in the text)
+    keyword_ranking = seo_rank_for_keywords(text, combined_keywords)
+    print("SEO Ranking of All Keywords:", keyword_ranking)
+    
+    # Remove duplicates from the combined keywords list
+    final_keywords = list(set(bart_keywords + seed_keywords))
+    
+    return final_keywords, keyword_ranking
 
-    # Filter out stop words, punctuation, and short words (less than 3 characters)
-    filtered_keywords = [
-        keyword for keyword, _ in keywords 
-        if keyword.lower() not in stop_words and len(keyword) > 2 and keyword not in punctuation
-    ]
+# Example Usage
+if __name__ == "__main__":
+    # Extract text from video
+    video_to_wav("input_video.mp4", "output_audio.wav")
+    transcribed_text = wav_to_text("output_audio.wav")
 
-    # Clean and filter the seed keywords
-    seed_keywords = [seed.strip().lower() for seed in seed_keywords if len(seed.strip()) > 2]
+    # Seed keywords provided by the user
+    seed_keywords = ["artificial intelligence", "deep learning", "NLP"]
 
-    # Combine extracted keywords and seed keywords without duplicates
-    final_keywords = list(set(filtered_keywords + seed_keywords))
-
-    return final_keywords
+    # Generate keywords with BART integration and seed keywords
+    combined_keywords, keyword_ranking = generate_keywords_with_bart_and_seeds(transcribed_text, seed_keywords)
+    print("Final Keywords (BART + Seed):", combined_keywords)
+    print("SEO Ranking of All Keywords:", keyword_ranking)

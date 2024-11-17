@@ -3,7 +3,8 @@ import React, { useState } from 'react';
 const KeywordGeneration = () => {
   const [videoFile, setVideoFile] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [keywords, setKeywords] = useState(null); // State to store generated keywords
+  const [keywords, setKeywords] = useState([]); // State to store generated keywords
+  const [error, setError] = useState(''); // State to handle error messages
 
   const handleFileChange = (event) => {
     const file = event.target.files[0];
@@ -21,28 +22,29 @@ const KeywordGeneration = () => {
     }
 
     setLoading(true);
+    setError(''); // Reset error state
+    setKeywords([]); // Reset the keywords
 
-    // Create form data to send to the server
     const formData = new FormData();
     formData.append('file', videoFile);
 
     try {
-      const response = await fetch('http://127.0.0.1:8000/keyword-with-keybert/', {
+      const response = await fetch('http://localhost:8000/keywords-bart/', {
         method: 'POST',
         body: formData,
       });
 
-      const data = await response.json();
+      const result = await response.json();
 
       if (response.ok) {
-        setKeywords(data.keywords); // Store the keywords from the response
+        setKeywords(result.keywords); // Store the generated keywords
         alert('Keywords generated successfully!');
       } else {
-        alert(data.error || 'Failed to generate keywords.');
+        setError(result.error || 'Failed to generate keywords.');
       }
     } catch (error) {
       console.error('Error during the request:', error);
-      alert('An error occurred while processing the video.');
+      setError('An error occurred while processing the video.');
     }
 
     setLoading(false);
@@ -54,7 +56,7 @@ const KeywordGeneration = () => {
       <header className="bg-white shadow">
         <div className="container mx-auto px-4 py-6">
           <h1 className="text-3xl font-bold text-gray-800">Keyword Generation</h1>
-          <p className="mt-2 text-gray-600">Generate SEO keywords using AI-driven tools like KeyBERT.</p>
+          <p className="mt-2 text-gray-600">Generate SEO keywords using AI-driven tools like BART.</p>
         </div>
       </header>
 
@@ -80,19 +82,18 @@ const KeywordGeneration = () => {
             </button>
           </form>
 
-          {loading && (
-            <p className="mt-4 text-yellow-600">Please wait while we process your video...</p>
-          )}
+          {loading && <p className="mt-4 text-yellow-600">Please wait while we process your video...</p>}
 
-          {/* Display generated keywords with their scores */}
-          {keywords && (
+          {/* Display error message if any */}
+          {error && <p className="mt-4 text-red-600">Error: {error}</p>}
+
+          {/* Display generated keywords */}
+          {keywords.length > 0 && (
             <div className="mt-6 text-left">
               <h3 className="text-lg font-bold text-gray-800">Generated Keywords:</h3>
               <ul className="list-disc list-inside text-gray-600">
-                {keywords.map((keywordData, index) => (
-                  <li key={index}>
-                    <span className="font-semibold">{keywordData[0]}</span> - Score: {keywordData[1].toFixed(4)}
-                  </li>
+                {keywords.map((keyword, index) => (
+                  <li key={index} className="text-gray-700">{keyword}</li>
                 ))}
               </ul>
             </div>
