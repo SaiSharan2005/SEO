@@ -25,67 +25,80 @@ app.add_middleware(
 
 @app.post("/upload-video/")
 async def upload_video(file: UploadFile = File(...)):
+    """
+    Endpoint to upload a video file.
+    The video file will be saved on the server for further processing.
+    """
     # Validate the file type
     if not file.filename.endswith(('.mp4', '.avi', '.mov', '.mkv')):
         return {"error": "Invalid file type. Only video files are allowed."}
 
-    file_path = os.path.join(UPLOAD_DIRECTORY, file.filename)
-
     # Save the uploaded video file
+    file_path = os.path.join(UPLOAD_DIRECTORY, file.filename)
     with open(file_path, "wb") as video_file:
         video_file.write(await file.read())
 
     return {"filename": file.filename, "message": "Video uploaded successfully."}
 
-@app.post("/keyword-with-keybert/")
-async def keyword_with_keybert(file: UploadFile = File(...)):
+@app.post("/keywords-bart/")
+async def keywords_bart(file: UploadFile = File(...)):
+    """
+    Endpoint to generate keywords from the uploaded video file using BART summarization and keyword extraction.
+    """
     # Validate the file type
     if not file.filename.endswith(('.mp4', '.avi', '.mov', '.mkv')):
         return {"error": "Invalid file type. Only video files are allowed."}
 
+    # Prepare file paths
     file_path = os.path.join(UPLOAD_DIRECTORY, file.filename)
-    audio_path = os.path.join(UPLOAD_DIRECTORY, file.filename.split(".")[0]+".wav")
+    audio_path = os.path.join(UPLOAD_DIRECTORY, file.filename.split(".")[0] + ".wav")
 
     # Save the uploaded video file
     with open(file_path, "wb") as video_file:
         video_file.write(await file.read())
-    
-    video_to_wav(file_path,audio_path)
-    text = wav_to_text(audio_path)
-    keyWords = generate_keywords_with_keybert(text)
-    return {"keywords": keyWords, "message": "Keywords Generated successfully."}
 
-# New route that accepts both video and seed keywords
-@app.post("/keyword-with-keybert-seed/")
-async def keyword_with_keybert_seed(file: UploadFile = File(...), seed_keywords: str = Form(...)):
+    # Convert video to audio and extract text
+    video_to_wav(file_path, audio_path)
+    text = wav_to_text(audio_path)
+
+    # Generate keywords using BART
+    keywords = generate_keywords_with_bart(text)
+
+    return {"keywords": keywords, "message": "Keywords generated using BART successfully."}
+
+@app.post("/keywords-bart-seed/")
+async def keywords_bart_with_seed(file: UploadFile = File(...), seed_keywords: str = Form(...)):
     """
-    Extract keywords from the video using KeyBERT, incorporating a list of seed keywords provided by the user.
-    
-    :param file: The uploaded video file.
-    :param seed_keywords: A comma-separated list of seed keywords provided as a form field.
+    Endpoint to generate keywords from the uploaded video using BART and include user-provided seed keywords.
     """
     # Validate the file type
     if not file.filename.endswith(('.mp4', '.avi', '.mov', '.mkv')):
         return {"error": "Invalid file type. Only video files are allowed."}
 
-    # Save the uploaded video
+    # Prepare file paths
     file_path = os.path.join(UPLOAD_DIRECTORY, file.filename)
-    audio_path = os.path.join(UPLOAD_DIRECTORY, file.filename.split(".")[0]+".wav")
+    audio_path = os.path.join(UPLOAD_DIRECTORY, file.filename.split(".")[0] + ".wav")
 
+    # Save the uploaded video file
     with open(file_path, "wb") as video_file:
         video_file.write(await file.read())
 
-    # Convert video to audio (wav) and extract text
+    # Convert video to audio and extract text
     video_to_wav(file_path, audio_path)
     text = wav_to_text(audio_path)
 
     # Process the seed keywords input (comma-separated list)
     seed_keywords_list = [keyword.strip() for keyword in seed_keywords.split(',') if keyword.strip()]
 
-    # Generate keywords using the provided seed keywords and the extracted text
-    keyWords = extract_keywords_with_seeds(text, seed_keywords_list)
+    # Generate keywords using BART and seed keywords
+    combined_keywords, keyword_ranking = generate_keywords_with_bart_and_seeds(text, seed_keywords_list)
 
-    return {"keywords": keyWords, "seed_keywords": seed_keywords_list, "message": "Keywords Generated successfully with seed keywords."}
+    return {
+        "keywords": combined_keywords,
+        "seed_keywords": seed_keywords_list,
+        "keyword_ranking": keyword_ranking,
+        "message": "Keywords generated using BART and seed keywords successfully."
+    }
 
 if __name__ == "__main__":
     import uvicorn
