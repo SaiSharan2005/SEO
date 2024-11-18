@@ -1,10 +1,11 @@
 from transformers import BartForConditionalGeneration, BartTokenizer
 from moviepy.editor import VideoFileClip
 import speech_recognition as sr
+from googleapiclient.discovery import build
+from collections import Counter
 import nltk
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
-from collections import Counter
 from keybert import KeyBERT
 import string
 
@@ -20,6 +21,12 @@ punctuation = set(string.punctuation)
 # Load BART model and tokenizer
 bart_model = BartForConditionalGeneration.from_pretrained("facebook/bart-large-cnn")
 bart_tokenizer = BartTokenizer.from_pretrained("facebook/bart-large-cnn")
+
+# YouTube API Key
+API_KEY = 'AIzaSyBMO_Qb9belqQUdjY0C1lWBFski9tMyRoE'
+
+# Initialize YouTube API client
+youtube = build('youtube', 'v3', developerKey=API_KEY)
 
 # Functions
 def video_to_wav(input_video_path, output_audio_path):
@@ -65,56 +72,79 @@ def generate_keywords_with_bart(text):
     most_common_keywords = keyword_freq.most_common(12)
     return [keyword for keyword, _ in most_common_keywords]
 
-def seo_rank_for_keywords(text, keywords):
-    """
-    Ranks keywords (both seed and generated) based on their frequency in the provided text.
+def search_videos_by_keyword(keyword, max_results=5):
+    search_response = youtube.search().list(
+        q=keyword,
+        part='id,snippet',
+        type='video',
+        maxResults=max_results
+    ).execute()
     
-    :param text: The input text to analyze.
-    :param keywords: A list of keywords to rank.
-    :return: A list of keywords ranked by their frequency in the text.
-    """
-    # Tokenize the input text and convert to lowercase
-    words = word_tokenize(text.lower())
-    
-    # Create a frequency count for the words in the text
-    word_freq = Counter(words)
-    
-    # Rank the keywords based on their frequency in the text
-    keyword_ranking = []
-    for keyword in keywords:
-        keyword_lower = keyword.lower()
-        frequency = word_freq.get(keyword_lower, 0)
-        keyword_ranking.append((keyword, frequency))
-    
-    # Sort the keywords by their frequency (descending order)
-    keyword_ranking.sort(key=lambda x: x[1], reverse=True)
-    
-    return keyword_ranking
+    # Get video IDs of search results
+    video_ids = [item['id']['videoId'] for item in search_response['items']]
+    return video_ids
 
-def generate_keywords_with_bart_and_seeds(text, seed_keywords):
-    """
-    Combines BART summarization-based keywords with seed keywords provided by the user,
-    Ranks all keywords (seed and BART-generated) based on their frequency in the transcribed text (SEO rank).
+def get_video_details(video_ids):
+    video_details = youtube.videos().list(
+        part='snippet,statistics',
+        id=','.join(video_ids)
+    ).execute()
     
-    :param text: The input text to process.
-    :param seed_keywords: A list of seed keywords to include in the final keyword list.
-    :return: A combined list of keywords and their SEO rankings.
-    """
-    # Generate keywords from BART summarization
+    return video_details
+
+# Modified `seo_rank_for_keywords_using_youtube` to include relevant SEO rank data in normalized scores
+def seo_rank_for_keywords_using_youtube(text, keywords):
+    keyword_relevance_scores = []
+
+    for keyword in keywords:
+        video_ids = search_videos_by_keyword(keyword)
+        video_details = get_video_details(video_ids)
+
+        total_relevance_score = 0
+
+        for item in video_details['items']:
+            title = item['snippet']['title']
+            description = item['snippet']['description']
+            views = int(item['statistics'].get('viewCount', 0))
+            likes = int(item['statistics'].get('likeCount', 0))
+            comments = int(item['statistics'].get('commentCount', 0))
+
+            # Calculate relevance based on keyword occurrence in title or description
+            title_score = 1 if keyword.lower() in title.lower() else 0
+            description_score = 1 if keyword.lower() in description.lower() else 0
+
+            # Engagement score multiplier based on views, likes, and comments
+            engagement_score = views + likes + comments
+
+            # Relevance score for this video
+            relevance_score = (title_score + description_score) * engagement_score
+            total_relevance_score += relevance_score
+
+        keyword_relevance_scores.append({
+            'keyword': keyword,
+            'raw_score': total_relevance_score
+        })
+
+    # Normalize the scores and sort keywords
+    max_score = max(item['raw_score'] for item in keyword_relevance_scores) if keyword_relevance_scores else 0
+
+    for item in keyword_relevance_scores:
+        item['normalized_score'] = (item['raw_score'] / max_score) * 100 if max_score > 0 else 0
+
+    # Sort keywords by normalized score in descending order
+    sorted_keywords = sorted(keyword_relevance_scores, key=lambda x: x['normalized_score'], reverse=True)
+
+    return sorted_keywords
+
+# Ensure the combined function returns SEO rank along with keywords
+def generate_keywords_with_bart_and_seeds_using_youtube(text, seed_keywords):
     bart_keywords = generate_keywords_with_bart(text)
-    print("BART-Generated Keywords:", bart_keywords)
-    
-    # Combine seed and BART keywords
-    combined_keywords = bart_keywords + seed_keywords
-    
-    # Rank the combined keywords based on SEO (frequency in the text)
-    keyword_ranking = seo_rank_for_keywords(text, combined_keywords)
-    print("SEO Ranking of All Keywords:", keyword_ranking)
-    
-    # Remove duplicates from the combined keywords list
-    final_keywords = list(set(bart_keywords + seed_keywords))
-    
-    return final_keywords, keyword_ranking
+    combined_keywords = list(set(bart_keywords + seed_keywords))
+
+    keyword_ranking = seo_rank_for_keywords_using_youtube(text, combined_keywords)
+
+    return combined_keywords, keyword_ranking
+
 
 # Example Usage
 if __name__ == "__main__":
@@ -126,6 +156,6 @@ if __name__ == "__main__":
     seed_keywords = ["artificial intelligence", "deep learning", "NLP"]
 
     # Generate keywords with BART integration and seed keywords
-    combined_keywords, keyword_ranking = generate_keywords_with_bart_and_seeds(transcribed_text, seed_keywords)
+    combined_keywords, keyword_ranking = generate_keywords_with_bart_and_seeds_using_youtube(transcribed_text, seed_keywords)
     print("Final Keywords (BART + Seed):", combined_keywords)
     print("SEO Ranking of All Keywords:", keyword_ranking)
