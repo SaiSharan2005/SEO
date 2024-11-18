@@ -25,16 +25,13 @@ app.add_middleware(
 
 @app.post("/upload-video/")
 async def upload_video(file: UploadFile = File(...)):
-    """
-    Endpoint to upload a video file.
-    The video file will be saved on the server for further processing.
-    """
     # Validate the file type
     if not file.filename.endswith(('.mp4', '.avi', '.mov', '.mkv')):
         return {"error": "Invalid file type. Only video files are allowed."}
 
-    # Save the uploaded video file
     file_path = os.path.join(UPLOAD_DIRECTORY, file.filename)
+
+    # Save the uploaded video file
     with open(file_path, "wb") as video_file:
         video_file.write(await file.read())
 
@@ -42,10 +39,7 @@ async def upload_video(file: UploadFile = File(...)):
 
 @app.post("/keywords-bart/")
 async def keywords_bart(file: UploadFile = File(...)):
-    """
-    Endpoint to generate keywords from the uploaded video file using BART summarization and keyword extraction.
-    """
-    # Validate the file type
+    # Validate file type
     if not file.filename.endswith(('.mp4', '.avi', '.mov', '.mkv')):
         return {"error": "Invalid file type. Only video files are allowed."}
 
@@ -53,7 +47,7 @@ async def keywords_bart(file: UploadFile = File(...)):
     file_path = os.path.join(UPLOAD_DIRECTORY, file.filename)
     audio_path = os.path.join(UPLOAD_DIRECTORY, file.filename.split(".")[0] + ".wav")
 
-    # Save the uploaded video file
+    # Save video file
     with open(file_path, "wb") as video_file:
         video_file.write(await file.read())
 
@@ -62,14 +56,47 @@ async def keywords_bart(file: UploadFile = File(...)):
     text = wav_to_text(audio_path)
 
     # Generate keywords using BART
-    keywords = generate_keywords_with_bart(text)
+    keywords, seo_rank = generate_keywords_with_bart_and_seeds_using_youtube(text, [])
 
-    return {"keywords": keywords, "message": "Keywords generated using BART successfully."}
+    return {"keywords": keywords, "seo_rank": seo_rank, "message": "Keywords and SEO rank generated successfully."}
 
 @app.post("/keywords-bart-seed/")
 async def keywords_bart_with_seed(file: UploadFile = File(...), seed_keywords: str = Form(...)):
+    # Validate file type
+    if not file.filename.endswith(('.mp4', '.avi', '.mov', '.mkv')):
+        return {"error": "Invalid file type. Only video files are allowed."}
+
+    # Prepare file paths
+    file_path = os.path.join(UPLOAD_DIRECTORY, file.filename)
+    audio_path = os.path.join(UPLOAD_DIRECTORY, file.filename.split(".")[0] + ".wav")
+
+    # Save video file
+    with open(file_path, "wb") as video_file:
+        video_file.write(await file.read())
+
+    # Convert video to audio and extract text
+    video_to_wav(file_path, audio_path)
+    text = wav_to_text(audio_path)
+
+    # Process seed keywords
+    seed_keywords_list = [keyword.strip() for keyword in seed_keywords.split(',') if keyword.strip()]
+
+    # Generate keywords and SEO ranking
+    combined_keywords, seo_rank = generate_keywords_with_bart_and_seeds_using_youtube(text, seed_keywords_list)
+
+    return {
+        "keywords": combined_keywords,
+        "seo_rank": seo_rank,
+        "seed_keywords": seed_keywords_list,
+        "message": "Keywords and SEO rank generated successfully."
+    }
+
+
+@app.post("/keywords-bart-seed-seo/")
+async def keywords_bart_with_seed_and_seo(file: UploadFile = File(...), seed_keywords: str = Form(...)):
     """
-    Endpoint to generate keywords from the uploaded video using BART and include user-provided seed keywords.
+    Endpoint to generate keywords from the uploaded video using BART and include user-provided seed keywords,
+    and ranks the keywords based on YouTube SEO.
     """
     # Validate the file type
     if not file.filename.endswith(('.mp4', '.avi', '.mov', '.mkv')):
@@ -91,15 +118,14 @@ async def keywords_bart_with_seed(file: UploadFile = File(...), seed_keywords: s
     seed_keywords_list = [keyword.strip() for keyword in seed_keywords.split(',') if keyword.strip()]
 
     # Generate keywords using BART and seed keywords
-    combined_keywords, keyword_ranking = generate_keywords_with_bart_and_seeds(text, seed_keywords_list)
+    combined_keywords, keyword_ranking = generate_keywords_with_bart_and_seeds_using_youtube(text, seed_keywords_list)
 
     return {
         "keywords": combined_keywords,
         "seed_keywords": seed_keywords_list,
         "keyword_ranking": keyword_ranking,
-        "message": "Keywords generated using BART and seed keywords successfully."
+        "message": "Keywords generated using BART, seed keywords, and SEO ranking from YouTube."
     }
-
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
